@@ -46,8 +46,15 @@ public class SecurityConfig {
     }
 
     /**
-     * API REST sin estado: cada solicitud envía sus credenciales Basic y no se usan cookies de
-     * sesión, por lo que no hay sesión que un sitio externo pueda aprovechar y CSRF no aplica.
+     * API REST sin sesión HTTP. CSRF está desactivado porque el cliente previsto es un cliente de
+     * API (curl, Postman, Swagger UI, otro backend) que envía el encabezado Authorization de forma
+     * explícita en cada solicitud.
+     * <p>
+     * STATELESS por sí solo no elimina el riesgo de CSRF: si una persona se autentica con el
+     * diálogo nativo del navegador, este guarda las credenciales Basic y las reenvía de forma
+     * automática, también en solicitudes iniciadas desde otro sitio. Por eso la API no debe
+     * usarse desde un navegador con ese diálogo; un frontend web propio requeriría reactivar CSRF
+     * o migrar a tokens enviados explícitamente.
      */
     @Bean
     @Order(2)
