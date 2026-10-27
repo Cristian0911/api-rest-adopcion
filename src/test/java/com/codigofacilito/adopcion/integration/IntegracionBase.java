@@ -21,9 +21,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Contexto completo de Spring con H2 en memoria, seguridad real y sin mocks. Las pruebas no son
- * transaccionales: cada solicitud confirma su propia transacción, igual que en ejecución real.
- * Antes de cada prueba se vacían las tablas de negocio, de modo que ninguna depende de otra.
+ * Contexto completo de Spring con H2 en memoria y seguridad, servicios y repositorios reales. Las
+ * subclases pueden agregar spies para simular fallos (AdopcionRollbackIT espía AdopcionMapper).
+ * Las pruebas no son transaccionales: cada solicitud confirma su propia transacción, igual que en
+ * ejecución real. Antes de cada prueba se vacían las tablas de negocio, de modo que ninguna
+ * depende de otra.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

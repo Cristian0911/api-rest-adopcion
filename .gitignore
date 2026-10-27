@@ -4,3 +4,7 @@ target/
 .DS_Store
 .env
 *.log
+# Certificados y claves (por ejemplo, el CA de Supabase) se guardan fuera del repositorio
+*.crt
+*.pem
+*.key

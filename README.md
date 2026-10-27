@@ -21,19 +21,24 @@ Proyecto final del Bootcamp de Backend con Java y Spring de Código Facilito.
 | Spring Boot | 4.1.2 |
 | Spring Framework | 7.0.10 |
 | Spring Security | 7.1.2 |
-| Hibernate ORM / Spring Data JPA | 7.4.13.Final |
+| Spring Data JPA | 4.1.2 |
+| Hibernate ORM (proveedor JPA) | 7.4.13.Final |
 | Hibernate Validator (Jakarta Bean Validation) | 9.1.5.Final |
-| H2 Database | 2.4.240 |
+| H2 Database (perfiles `dev` y `test`) | 2.4.240 |
+| Driver JDBC de PostgreSQL (perfil `postgres`) | 42.7.14 |
+| Flyway (migraciones del perfil `postgres`) | 12.4.0 |
 | springdoc-openapi (Swagger UI 5.34.0) | 3.2.0 |
 | Jackson | 3.1.7 |
 | Tomcat embebido | 11.0.27 |
 | JUnit Jupiter / Mockito | 6.0.3 / 5.23.0 |
+| Testcontainers (imagen `postgres:17-alpine`) | 2.0.5 |
 | Maven (mediante Maven Wrapper) | 3.9.16 |
 
 ## Requisitos
 
 - **JDK 21** instalado y disponible (`java -version`).
 - **No hace falta instalar Maven**: el proyecto incluye Maven Wrapper (`mvnw` para Git Bash, `mvnw.cmd` para PowerShell/CMD), que descarga Maven 3.9.16 la primera vez.
+- **Docker** (por ejemplo, Docker Desktop en ejecución) **solo** para las pruebas de PostgreSQL (`-Ppostgres`) o para levantar un PostgreSQL local. La API con H2 y las pruebas normales no lo necesitan.
 
 > En Windows, `mvnw.cmd` necesita que `powershell.exe` esté en el `PATH`. Si aparece
 > `"powershell" no se reconoce como un comando...` o `Cannot start maven from wrapper`, ver
@@ -51,6 +56,11 @@ com.codigofacilito.adopcion
 ├── dto          Records de request/response y ErrorResponse
 ├── mapper       Conversión entidad <-> DTO
 └── exception    Excepciones de negocio y @RestControllerAdvice
+
+src/main/resources
+├── application*.properties          Configuración general y perfiles dev / postgres
+├── data.sql                         Tipos de mascota iniciales (solo H2)
+└── db/migration/postgresql/V*.sql   Migraciones Flyway (solo perfil postgres)
 ```
 
 Flujo: **HTTP → Controller → Service → Repository → Base de datos**. Los controllers nunca acceden a repositories; toda la lógica de negocio vive en los servicios. Se usa inyección por constructor en todas las capas.
@@ -139,6 +149,7 @@ Para detener la aplicación: `Ctrl + C` en la terminal donde se está ejecutando
 |---|---|---|---|---|
 | `dev` | Por defecto al ejecutar localmente | H2 en memoria `jdbc:h2:mem:adopciondb` | Habilitada (solo ADMIN) | Valores de demostración o variables de entorno |
 | `test` | Automáticamente en las pruebas | H2 en memoria con nombre aleatorio por contexto | Deshabilitada | `test-user` / `test-admin` (solo pruebas) |
+| `postgres` | `SPRING_PROFILES_ACTIVE=postgres` | PostgreSQL (`DB_URL`), schema `adopcion`, Flyway, datos persistentes | Deshabilitada | **Obligatorio** definir las variables de entorno |
 | Otro (ej. `prod`) | `--spring.profiles.active=prod` | H2 en memoria | Deshabilitada | **Obligatorio** definir las variables de entorno |
 
 Las **cuentas de acceso** autentican a quien opera la API (por ejemplo, el personal del refugio). **No son los usuarios adoptantes**: estos son datos de la entidad `Usuario` y no tienen contraseña.
@@ -391,6 +402,89 @@ SELECT * FROM ADOPCIONES;
 
 La consola tiene su propia cadena de seguridad que exige el rol ADMIN. Solo para sus rutas se permite que el sitio se muestre en frames del mismo origen y se desactiva CSRF, porque la consola usa formularios y frames propios. Con la cuenta USER responde `403`, y en los perfiles distintos de `dev` no existe.
 
+## PostgreSQL y Supabase (perfil `postgres`)
+
+El perfil `postgres` conecta la API a un PostgreSQL con datos persistentes:
+
+- **Esquema propio `adopcion`**: JPA (`hibernate.default_schema`) y Flyway (`default-schema`, `schemas`) usan el mismo schema; no se crean tablas en `public`.
+- **Migraciones versionadas** en `src/main/resources/db/migration/postgresql`:
+  - `V1__crear_esquema.sql`: tablas, restricciones con nombre (`uk_usuario_correo`, `uk_adopcion_mascota`, `ck_mascota_edad`, claves foráneas sin cascada) e índices de las claves foráneas.
+  - `V2__tipos_mascota_iniciales.sql`: Perro, Gato, Conejo y Ave con `ON CONFLICT (nombre) DO NOTHING`. Flyway la ejecuta una sola vez; el `ON CONFLICT` evita duplicados si los tipos ya existían.
+  - `V3__restringir_acceso_externo.sql`: quita todo acceso al schema a los roles `anon` y `authenticated` de Supabase (si existen) y activa RLS sin políticas en las cuatro tablas. La aplicación conecta con el rol dueño de las tablas, al que RLS no afecta.
+- **`ddl-auto=validate`**: Hibernate nunca crea ni modifica tablas; si las entidades y las migraciones no coinciden, la aplicación no arranca.
+- **`data.sql` no se ejecuta** (`spring.sql.init.mode=never`): solo se usa con H2.
+- **`lock_timeout`** (por defecto 5 s, variable `DB_LOCK_TIMEOUT`): si una adopción espera un bloqueo más que eso, responde `409` ("intente nuevamente") en lugar de esperar indefinidamente.
+
+H2 sigue siendo la base de los perfiles `dev` y `test`; Flyway está desactivado fuera del perfil `postgres`.
+
+### Variables de entorno
+
+Ver la plantilla [`.env.example`](.env.example) (sin valores reales). Spring Boot **no** lee archivos `.env` por sí solo: definir las variables en la terminal o en la Run Configuration de IntelliJ.
+
+| Variable | Descripción |
+|---|---|
+| `SPRING_PROFILES_ACTIVE` | `postgres` |
+| `DB_URL` | URL JDBC: `jdbc:postgresql://<host>:<puerto>/<base>?<parámetros>` (sin usuario ni contraseña) |
+| `DB_USERNAME` / `DB_PASSWORD` | Credenciales de la base |
+| `DB_POOL_SIZE` | Máximo de conexiones del pool (por defecto 5) |
+| `DB_LOCK_TIMEOUT` | Espera máxima de un bloqueo (por defecto `5s`) |
+| `SPRING_FLYWAY_URL` / `SPRING_FLYWAY_USER` / `SPRING_FLYWAY_PASSWORD` | Opcional: conexión distinta para las migraciones. Si se define la URL, hay que definir también usuario y contraseña: Flyway no reutiliza los de `DB_*` |
+| `APP_USER_*` / `APP_ADMIN_*` | Cuentas de acceso a la API (obligatorias) |
+
+### PostgreSQL local con Docker (verificado)
+
+```powershell
+# PowerShell
+docker run -d --rm --name adopcion-postgres -e POSTGRES_PASSWORD=clave-local -p 127.0.0.1:55432:5432 postgres:17-alpine
+.\mvnw.cmd clean package -DskipTests
+$env:SPRING_PROFILES_ACTIVE = "postgres"
+$env:DB_URL = "jdbc:postgresql://localhost:55432/postgres"
+$env:DB_USERNAME = "postgres"; $env:DB_PASSWORD = "clave-local"
+$env:APP_USER_NAME = "user";   $env:APP_USER_PASSWORD = "user123"
+$env:APP_ADMIN_NAME = "admin"; $env:APP_ADMIN_PASSWORD = "admin123"
+java -jar target\adopcion-0.0.1-SNAPSHOT.jar
+# Al terminar: Ctrl + C y luego
+docker stop adopcion-postgres
+```
+
+```bash
+# Git Bash
+docker run -d --rm --name adopcion-postgres -e POSTGRES_PASSWORD=clave-local -p 127.0.0.1:55432:5432 postgres:17-alpine
+./mvnw clean package -DskipTests
+SPRING_PROFILES_ACTIVE=postgres DB_URL=jdbc:postgresql://localhost:55432/postgres \
+DB_USERNAME=postgres DB_PASSWORD=clave-local \
+APP_USER_NAME=user APP_USER_PASSWORD=user123 APP_ADMIN_NAME=admin APP_ADMIN_PASSWORD=admin123 \
+java -jar target/adopcion-0.0.1-SNAPSHOT.jar
+docker stop adopcion-postgres
+```
+
+En el primer arranque el log muestra `Successfully applied 3 migrations to schema "adopcion"`; en los siguientes, `Schema "adopcion" is up to date`. Los datos se conservan entre reinicios de la aplicación mientras el contenedor siga activo (`--rm` lo elimina al detenerlo). Las credenciales de este ejemplo son solo para uso local.
+
+### Supabase (preparado, **no verificado**)
+
+> La configuración está preparada siguiendo la documentación de Supabase, pero **no se probó contra un
+> proyecto real de Supabase**. La conectividad depende también de tu red, DNS, firewall y de los
+> permisos del proyecto.
+
+1. **Elegir la conexión** en el panel del proyecto (**Connect**). Usar el host, puerto y usuario **exactos** que muestre el panel:
+   - **Pooler compartido en modo session** (configuración recomendada para este proyecto): accesible por IPv4. El usuario tiene la forma `postgres.<project-ref>`.
+   - **Conexión directa**: según Supabase, en los planes Free y Pro es solo IPv6, salvo que se contrate el complemento IPv4. Supabase la recomienda para migraciones si hay conectividad.
+   - **No usar el pooler en modo transaction** (puerto 6543): no soporta prepared statements y pierde la configuración de sesión (`lock_timeout`) y los bloqueos de sesión que usa Flyway para coordinar migraciones.
+2. **SSL**: descargar el certificado CA desde *Database Settings → SSL Configuration*, guardarlo **fuera del repositorio** (los `.crt` están en `.gitignore`) y usar `sslmode=verify-full`, que cifra la conexión y verifica la autoridad certificadora y el nombre del host. `sslmode=require` solo cifra y no verifica el servidor. Supabase no exige SSL por defecto; se puede forzar desde la misma sección (el cambio reinicia la base).
+3. **Definir las variables**, por ejemplo en PowerShell (reemplazar los valores entre `< >` con los del panel; la ruta del certificado con `/`):
+
+   ```powershell
+   $env:SPRING_PROFILES_ACTIVE = "postgres"
+   $env:DB_URL = "jdbc:postgresql://<HOST_DEL_POOLER>:<PUERTO>/postgres?sslmode=verify-full&sslrootcert=C:/ruta/al/certificado-ca.crt"
+   $env:DB_USERNAME = "<USUARIO_DEL_POOLER>"
+   $env:DB_PASSWORD = "<CLAVE_DE_LA_BASE>"
+   # además APP_USER_* y APP_ADMIN_*
+   java -jar target\adopcion-0.0.1-SNAPSHOT.jar
+   ```
+
+4. **Migraciones por conexión directa** (opcional, si hay conectividad IPv6 o complemento IPv4): definir `SPRING_FLYWAY_URL`, `SPRING_FLYWAY_USER` y `SPRING_FLYWAY_PASSWORD` con los datos de la conexión directa. Si no, Flyway usa la misma conexión del pooler en modo session, que mantiene la sesión durante toda la conexión.
+5. **API de datos de Supabase**: la aplicación solo necesita JDBC. El schema `adopcion` no debe agregarse a los *Exposed schemas* de la Data API; la migración V3 además revoca el acceso de `anon` y `authenticated` y activa RLS como defensa adicional. Conviene confirmarlo en el panel después de migrar.
+
 ## HTTP Basic, HTTPS y CSRF
 
 - **HTTP Basic no cifra las credenciales**: solo las codifica en Base64 en el header `Authorization`, así que cualquiera que intercepte el tráfico puede leerlas. **Fuera del entorno local es obligatorio usar HTTPS.** Esta configuración sirve solo para desarrollo y evaluación.
@@ -404,17 +498,22 @@ La consola tiene su propia cadena de seguridad que exige el rol ADMIN. Solo para
 |---|---|---|---|
 | Unitarias de servicio | `src/test/java/.../service` (`*Test`) | JUnit + Mockito, sin Spring | `test` (Surefire) |
 | Controllers | `src/test/java/.../controller` (`*Test`) | `@WebMvcTest` + MockMvc + seguridad real, servicios simulados | `test` (Surefire) |
-| Integración | `src/test/java/.../integration` (`*IT`) | `@SpringBootTest` + H2, sin mocks; `@DataJpaTest` para restricciones | `integration-test` (Failsafe) |
+| Integración con H2 | `src/test/java/.../integration` (`*IT`) | `@SpringBootTest` + H2 con servicios y repositorios reales; `AdopcionRollbackIT` usa un spy (`@MockitoSpyBean` sobre `AdopcionMapper`) para provocar un fallo controlado dentro de la transacción; `@DataJpaTest` para restricciones | `integration-test` (Failsafe) |
+| Integración con PostgreSQL | `src/test/java/.../postgres` (`*PostgresIT`) | `@SpringBootTest` con el perfil `postgres` real (Flyway, schema `adopcion`, `validate`) sobre PostgreSQL 17 en Testcontainers; sin mocks ni spies | Solo con `-Ppostgres` (Failsafe) |
 
 ```powershell
-.\mvnw.cmd clean test      # PowerShell: unitarias y de controller
-.\mvnw.cmd clean verify    # PowerShell: todas, incluidas las de integración
+.\mvnw.cmd clean test                 # PowerShell: unitarias y de controller
+.\mvnw.cmd clean verify               # PowerShell: las anteriores + integración con H2
+.\mvnw.cmd clean verify -Ppostgres    # PowerShell: unitarias y de controller + integración con PostgreSQL (requiere Docker)
 ```
 
 ```bash
-./mvnw clean test          # Git Bash
+./mvnw clean test                     # Git Bash
 ./mvnw clean verify
+./mvnw clean verify -Ppostgres
 ```
+
+El perfil Maven `postgres` reemplaza las pruebas de integración con H2 por las de PostgreSQL; para ejecutar ambas, correr los dos comandos `verify`. Las pruebas de PostgreSQL no se omiten si falta Docker: no usan `disabledWithoutDocker`, así que fallan al iniciar el contexto con un error de Testcontainers.
 
 Las pruebas de integración cubren, entre otras cosas:
 
@@ -426,10 +525,12 @@ Las pruebas de integración cubren, entre otras cosas:
 
 Las pruebas usan el perfil `test`, que tiene sus propias credenciales y una base H2 independiente.
 
+Las pruebas de PostgreSQL verifican además: que Flyway crea el schema `adopcion` y aplica V1–V3, que no hay tablas en `public`, que los tipos iniciales no se duplican, que RLS está activo, las restricciones UNIQUE/CHECK/FK, el rollback, la carrera de dos adopciones, la espera por `SELECT ... FOR UPDATE` y que un bloqueo que supera `lock_timeout` responde `409` sin cambios.
+
 **Reportes:**
 
 - Surefire (unitarias y de controller): `target/surefire-reports/`
-- Failsafe (integración): `target/failsafe-reports/`
+- Failsafe (integración con H2 o con PostgreSQL, según el comando): `target/failsafe-reports/`
 
 Cada clase genera un archivo `.txt` con el resumen y un `.xml` con el detalle.
 
