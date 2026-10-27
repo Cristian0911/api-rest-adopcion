@@ -38,7 +38,7 @@ Proyecto final del Bootcamp de Backend con Java y Spring de Código Facilito.
 
 - **JDK 21** instalado y disponible (`java -version`).
 - **No hace falta instalar Maven**: el proyecto incluye Maven Wrapper (`mvnw` para Git Bash, `mvnw.cmd` para PowerShell/CMD), que descarga Maven 3.9.16 la primera vez.
-- **Docker** (por ejemplo, Docker Desktop en ejecución) **solo** para las pruebas de PostgreSQL (`-Ppostgres`) o para levantar un PostgreSQL local. La API con H2 y las pruebas normales no lo necesitan.
+- **Docker** (por ejemplo, Docker Desktop en ejecución) **solo** para ejecutar la API en un contenedor, para las pruebas de PostgreSQL (`-Ppostgres`) o para levantar un PostgreSQL local. La API con H2 y las pruebas normales no lo necesitan.
 
 > En Windows, `mvnw.cmd` necesita que `powershell.exe` esté en el `PATH`. Si aparece
 > `"powershell" no se reconoce como un comando...` o `Cannot start maven from wrapper`, ver
@@ -142,6 +142,122 @@ Para detener la aplicación: `Ctrl + C` en la terminal donde se está ejecutando
 > ⚠️ **Los datos no se conservan.** H2 corre en memoria y Hibernate usa `ddl-auto=create-drop`:
 > al reiniciar la aplicación se pierden todos los registros y solo se recargan los tipos de mascota.
 > Por eso, con la aplicación recién iniciada, los ids de mascotas, usuarios y adopciones empiezan en 1.
+
+### Con Docker
+
+El `Dockerfile` usa dos etapas:
+
+- **Compilación:** usa `maven:3.9.16-eclipse-temurin-21` y genera el JAR ejecutable con `mvn -DskipTests package`. **Las pruebas no se ejecutan al construir la imagen**, para no requerir base de datos ni Docker dentro de la construcción; se ejecutan aparte con `mvnw verify` (ver [Pruebas](#pruebas)).
+- **Ejecución:** usa `eclipse-temurin:21-jre-noble`, con un usuario sin privilegios (`adopcion`, uid 10001), `EXPOSE 8080` y `ENTRYPOINT` en formato exec.
+
+La imagen no contiene credenciales ni archivos `.env`: el perfil se elige con `SPRING_PROFILES_ACTIVE` y la configuración se pasa al ejecutar el contenedor con `--env-file`. El `.dockerignore` excluye, entre otros, `.git`, `target`, los archivos `.env*`, los certificados y las claves privadas.
+
+Requiere Docker Desktop en ejecución. Los comandos son iguales en PowerShell y Git Bash salvo donde se indica, y se ejecutan desde la carpeta raíz del proyecto.
+
+**1. Construir la imagen**
+
+```bash
+docker build -t api-rest-adopcion .
+```
+
+**2. Crear el archivo de configuración local**
+
+Los archivos `.env.*` están en `.gitignore` (excepto `.env.example`), así que no se suben al repositorio.
+
+- **Con H2 (perfil `dev`):**
+
+  ```powershell
+  # PowerShell
+  Set-Content -Path .env.h2 -Value "SPRING_PROFILES_ACTIVE=dev" -Encoding ascii
+  ```
+
+  ```bash
+  # Git Bash
+  printf 'SPRING_PROFILES_ACTIVE=dev\n' > .env.h2
+  ```
+
+  El perfil `dev` usa las credenciales de demostración (`user`/`user123` y `admin`/`admin123`). Para cambiarlas, agregar líneas `APP_USER_NAME=...`, etc.
+
+- **Con PostgreSQL (perfil `postgres`):** copiar la plantilla (`Copy-Item .env.example .env.postgres` en PowerShell, `cp .env.example .env.postgres` en Git Bash) y completar los valores. En un `--env-file` los valores van **sin comillas** y no admiten comentarios al final de la línea.
+
+**3. Levantar el contenedor en segundo plano**
+
+```bash
+docker run -d --name adopcion-api --env-file .env.h2 -p 127.0.0.1:8080:8080 api-rest-adopcion
+```
+
+`-p 127.0.0.1:8080:8080` publica el puerto solo en el equipo local. Para PostgreSQL, usar `--env-file .env.postgres`.
+
+**4. Comprobar que funciona**
+
+```bash
+# Git Bash
+curl http://localhost:8080/actuator/health
+curl -i http://localhost:8080/api/mascotas                      # 401 sin credenciales
+curl -u user:user123 http://localhost:8080/api/mascotas         # 200
+```
+
+```powershell
+# PowerShell
+curl.exe http://localhost:8080/actuator/health
+curl.exe -i http://localhost:8080/api/mascotas
+curl.exe -u user:user123 http://localhost:8080/api/mascotas
+```
+
+Swagger UI queda en <http://localhost:8080/swagger-ui.html>. Con el perfil `dev`, la consola H2 queda en <http://localhost:8080/h2-console>.
+
+**5. Logs, detener y eliminar**
+
+```bash
+docker logs -f adopcion-api     # ver logs (Ctrl + C deja de seguirlos; el contenedor sigue activo)
+docker stop adopcion-api        # detener
+docker rm adopcion-api          # eliminar
+```
+
+> ⚠️ **Con H2 los datos viven solo mientras dura el proceso.** Al reiniciar (`docker restart`),
+> detener o eliminar el contenedor, se pierden todos los registros. Con el perfil `postgres` los datos
+> están en la base externa y se conservan aunque se elimine el contenedor de la API.
+
+#### PostgreSQL desde el contenedor
+
+**`localhost` dentro del contenedor es el propio contenedor, no Windows.** Con `DB_URL=jdbc:postgresql://localhost:...` la conexión es rechazada.
+
+- **PostgreSQL en el equipo (Windows o un contenedor publicado en el host) con Docker Desktop:** usar `host.docker.internal`. Por ejemplo, para el PostgreSQL local de la [sección anterior](#postgresql-local-con-docker-verificado), el archivo `.env.postgres` quedaría así:
+
+  ```
+  SPRING_PROFILES_ACTIVE=postgres
+  DB_URL=jdbc:postgresql://host.docker.internal:55432/postgres
+  DB_USERNAME=postgres
+  DB_PASSWORD=clave-local
+  DB_POOL_SIZE=5
+  DB_LOCK_TIMEOUT=5s
+  APP_USER_NAME=user
+  APP_USER_PASSWORD=user123
+  APP_ADMIN_NAME=admin
+  APP_ADMIN_PASSWORD=admin123
+  ```
+
+  Las variables opcionales `SPRING_FLYWAY_URL`, `SPRING_FLYWAY_USER` y `SPRING_FLYWAY_PASSWORD` se agregan al mismo archivo si las migraciones deben usar otra conexión.
+
+- **Supabase (preparado, no verificado):** usar en `DB_URL` el host, puerto y usuario exactos del panel (ver [Supabase](#supabase-preparado-no-verificado)). El certificado CA **no se copia a la imagen**: se monta como archivo de solo lectura y se referencia con su ruta **dentro** del contenedor:
+
+  ```
+  DB_URL=jdbc:postgresql://<HOST_DEL_POOLER>:<PUERTO>/postgres?sslmode=verify-full&sslrootcert=/certs/supabase-ca.crt
+  ```
+
+  ```powershell
+  # PowerShell
+  docker run -d --name adopcion-api --env-file .env.postgres -p 127.0.0.1:8080:8080 `
+    -v "C:/ruta/al/certificado-ca.crt:/certs/supabase-ca.crt:ro" api-rest-adopcion
+  ```
+
+  ```bash
+  # Git Bash
+  docker run -d --name adopcion-api --env-file .env.postgres -p 127.0.0.1:8080:8080 \
+    -v "C:/ruta/al/certificado-ca.crt:/certs/supabase-ca.crt:ro" api-rest-adopcion
+  ```
+
+  Si Git Bash transforma las rutas que empiezan con `/` (síntoma: el archivo no aparece en `/certs`), anteponer `MSYS_NO_PATHCONV=1` al comando.
 
 ## Perfiles y credenciales
 

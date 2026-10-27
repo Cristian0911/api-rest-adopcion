@@ -3,6 +3,8 @@ target/
 *.iml
 .DS_Store
 .env
+.env.*
+!.env.example
 *.log
 # Certificados y claves (por ejemplo, el CA de Supabase) se guardan fuera del repositorio
 *.crt
