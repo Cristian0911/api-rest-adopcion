@@ -1,66 +1,93 @@
 package com.codigofacilito.adopcion.service;
 
+import com.codigofacilito.adopcion.dto.MascotaRequest;
+import com.codigofacilito.adopcion.dto.MascotaResponse;
+import com.codigofacilito.adopcion.dto.MascotaUpdateRequest;
+import com.codigofacilito.adopcion.entity.Mascota;
+import com.codigofacilito.adopcion.entity.TipoMascota;
+import com.codigofacilito.adopcion.exception.ConflictoException;
 import com.codigofacilito.adopcion.exception.RecursoNoEncontradoException;
-import com.codigofacilito.adopcion.model.Mascota;
+import com.codigofacilito.adopcion.mapper.MascotaMapper;
+import com.codigofacilito.adopcion.repository.AdopcionRepository;
 import com.codigofacilito.adopcion.repository.MascotaRepository;
+import com.codigofacilito.adopcion.repository.TipoMascotaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
+@Transactional(readOnly = true)
 public class MascotaService {
 
-    private final MascotaRepository repository;
+    private final MascotaRepository mascotaRepository;
+    private final TipoMascotaRepository tipoMascotaRepository;
+    private final AdopcionRepository adopcionRepository;
+    private final MascotaMapper mascotaMapper;
 
-    public MascotaService(MascotaRepository repository) {
-        this.repository = repository;
-    }
-
-    public List<Mascota> listar(String especie, Boolean disponibles) {
-        if (Boolean.TRUE.equals(disponibles)) {
-            return repository.findByAdoptadaFalse();
-        }
-        if (especie != null && !especie.isBlank()) {
-            return repository.findByEspecieIgnoreCase(especie);
-        }
-        return repository.findAll();
-    }
-
-    public Mascota buscarPorId(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Mascota con id " + id + " no encontrada"));
-    }
-
-    public Mascota crear(Mascota mascota) {
-        mascota.setId(null);
-        mascota.setAdoptada(false);
-        mascota.setAdoptante(null);
-        return repository.save(mascota);
+    public MascotaService(MascotaRepository mascotaRepository,
+                          TipoMascotaRepository tipoMascotaRepository,
+                          AdopcionRepository adopcionRepository,
+                          MascotaMapper mascotaMapper) {
+        this.mascotaRepository = mascotaRepository;
+        this.tipoMascotaRepository = tipoMascotaRepository;
+        this.adopcionRepository = adopcionRepository;
+        this.mascotaMapper = mascotaMapper;
     }
 
     @Transactional
-    public Mascota actualizar(Long id, Mascota datos) {
-        Mascota mascota = buscarPorId(id);
-        mascota.setNombre(datos.getNombre());
-        mascota.setEspecie(datos.getEspecie());
-        mascota.setRaza(datos.getRaza());
-        mascota.setEdad(datos.getEdad());
-        return repository.save(mascota);
+    public MascotaResponse registrar(MascotaRequest request) {
+        TipoMascota tipo = buscarTipo(request.tipoMascotaId());
+        Mascota mascota = mascotaRepository.save(mascotaMapper.toEntity(request, tipo));
+        return mascotaMapper.toResponse(mascota);
     }
 
+    public List<MascotaResponse> listarDisponibles() {
+        return mascotaRepository.findByDisponibleTrueOrderByIdAsc().stream()
+                .map(mascotaMapper::toResponse)
+                .toList();
+    }
+
+    public MascotaResponse obtener(Long id) {
+        return mascotaRepository.findWithTipoById(id)
+                .map(mascotaMapper::toResponse)
+                .orElseThrow(() -> mascotaNoEncontrada(id));
+    }
+
+    @Transactional
+    public MascotaResponse actualizar(Long id, MascotaUpdateRequest request) {
+        Mascota mascota = bloquear(id);
+        if (Boolean.TRUE.equals(request.disponible()) && adopcionRepository.existsByMascotaId(id)) {
+            throw new ConflictoException("La mascota con id " + id + " ya fue adoptada y no puede volver a estar disponible");
+        }
+        mascota.setNombre(request.nombre().trim());
+        mascota.setTipoMascota(buscarTipo(request.tipoMascotaId()));
+        mascota.setEdad(request.edad());
+        if (request.disponible() != null) {
+            mascota.setDisponible(request.disponible());
+        }
+        return mascotaMapper.toResponse(mascota);
+    }
+
+    @Transactional
     public void eliminar(Long id) {
-        repository.delete(buscarPorId(id));
+        Mascota mascota = bloquear(id);
+        if (adopcionRepository.existsByMascotaId(id)) {
+            throw new ConflictoException("La mascota con id " + id + " tiene una adopción registrada y no puede eliminarse");
+        }
+        mascotaRepository.delete(mascota);
     }
 
-    @Transactional
-    public Mascota adoptar(Long id, String adoptante) {
-        Mascota mascota = buscarPorId(id);
-        if (mascota.isAdoptada()) {
-            throw new IllegalStateException("La mascota ya fue adoptada");
-        }
-        mascota.setAdoptada(true);
-        mascota.setAdoptante(adoptante);
-        return repository.save(mascota);
+    private Mascota bloquear(Long id) {
+        return mascotaRepository.findByIdForUpdate(id).orElseThrow(() -> mascotaNoEncontrada(id));
+    }
+
+    private TipoMascota buscarTipo(Long id) {
+        return tipoMascotaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el tipo de mascota con id " + id));
+    }
+
+    private static RecursoNoEncontradoException mascotaNoEncontrada(Long id) {
+        return new RecursoNoEncontradoException("No existe la mascota con id " + id);
     }
 }

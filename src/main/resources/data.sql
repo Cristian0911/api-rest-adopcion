@@ -1,3 +1,4 @@
-INSERT INTO mascotas (nombre, especie, raza, edad, adoptada) VALUES ('Firulais', 'Perro', 'Mestizo', 3, false);
-INSERT INTO mascotas (nombre, especie, raza, edad, adoptada) VALUES ('Michi', 'Gato', 'Siamés', 2, false);
-INSERT INTO mascotas (nombre, especie, raza, edad, adoptada) VALUES ('Rocky', 'Perro', 'Labrador', 5, false);
+INSERT INTO tipos_mascota (nombre) VALUES ('Perro');
+INSERT INTO tipos_mascota (nombre) VALUES ('Gato');
+INSERT INTO tipos_mascota (nombre) VALUES ('Conejo');
+INSERT INTO tipos_mascota (nombre) VALUES ('Ave');
