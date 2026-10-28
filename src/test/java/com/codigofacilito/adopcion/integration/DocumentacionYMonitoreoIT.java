@@ -94,6 +94,25 @@ class DocumentacionYMonitoreoIT extends IntegracionBase {
     }
 
     @Test
+    void lasRespuestasExitosasSeDocumentanComoHalYLosErroresComoJson() throws Exception {
+        JsonNode documento = apiDocs();
+        JsonNode lista = documento.path("paths").path("/api/mascotas").path("get").path("responses").path("200")
+                .path("content");
+        JsonNode error = documento.path("paths").path("/api/mascotas/{id}").path("get").path("responses").path("404")
+                .path("content");
+
+        assertThat(lista.has("application/hal+json")).isTrue();
+        assertThat(error.has("application/json")).isTrue();
+
+        String esquemaLista = lista.path("application/hal+json").path("schema").path("$ref").asString();
+        JsonNode coleccion = documento.path("components").path("schemas")
+                .path(esquemaLista.substring(esquemaLista.lastIndexOf('/') + 1)).path("properties");
+        assertThat(coleccion.path("_embedded").path("properties").has("mascotas")).isTrue();
+        assertThat(coleccion.has("_links")).isTrue();
+        assertThat(documento.path("info").path("description").asString()).contains("application/hal+json", "_embedded");
+    }
+
+    @Test
     void swaggerUiEsAccesibleSinCredenciales() throws Exception {
         mockMvc.perform(get("/swagger-ui.html"))
                 .andExpect(status().is3xxRedirection())

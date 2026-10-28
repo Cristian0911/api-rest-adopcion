@@ -2,6 +2,7 @@ package com.codigofacilito.adopcion.controller;
 
 import com.codigofacilito.adopcion.config.SecurityConfig;
 import com.codigofacilito.adopcion.config.SecurityErrorHandler;
+import com.codigofacilito.adopcion.controller.hateoas.MascotaModelAssembler;
 import com.codigofacilito.adopcion.dto.MascotaRequest;
 import com.codigofacilito.adopcion.dto.MascotaResponse;
 import com.codigofacilito.adopcion.dto.MascotaUpdateRequest;
@@ -13,12 +14,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.hateoas.MediaTypes;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.codigofacilito.adopcion.support.CredencialesPrueba.comoAdmin;
 import static com.codigofacilito.adopcion.support.CredencialesPrueba.comoUser;
@@ -28,6 +31,7 @@ import static org.hamcrest.Matchers.endsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -35,12 +39,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(MascotaController.class)
-@Import({SecurityConfig.class, SecurityErrorHandler.class})
+@Import({SecurityConfig.class, SecurityErrorHandler.class, MascotaModelAssembler.class})
 @ActiveProfiles("test")
 class MascotaControllerTest {
 
@@ -132,7 +137,7 @@ class MascotaControllerTest {
 
         mockMvc.perform(get("/api/mascotas").with(comoUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].nombre").value("Firulais"));
+                .andExpect(jsonPath("$._embedded.mascotas[0].nombre").value("Firulais"));
     }
 
     @Test
@@ -265,5 +270,107 @@ class MascotaControllerTest {
 
         mockMvc.perform(delete("/api/mascotas/10").with(comoAdmin()))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void registrarDevuelveHalConEnlaceSelfIgualALocation() throws Exception {
+        when(mascotaService.registrar(any(MascotaRequest.class))).thenReturn(firulais(true));
+
+        mockMvc.perform(post("/api/mascotas").with(comoAdmin())
+                        .contentType(MediaType.APPLICATION_JSON).content(MASCOTA_VALIDA))
+                .andExpect(status().isCreated())
+                .andExpect(content().contentType(MediaTypes.HAL_JSON))
+                .andExpect(header().string("Location", "http://localhost/api/mascotas/10"))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/mascotas/10"));
+    }
+
+    @Test
+    void mascotaDisponibleComoAdminOfreceAdoptarActualizarYEliminar() throws Exception {
+        when(mascotaService.obtener(10L)).thenReturn(firulais(true));
+        when(mascotaService.adopcionDe(10L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/mascotas/10").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaTypes.HAL_JSON))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/mascotas/10"))
+                .andExpect(jsonPath("$._links.mascotas-disponibles.href").value("http://localhost/api/mascotas"))
+                .andExpect(jsonPath("$._links.adoptar.href").value("http://localhost/api/adopciones"))
+                .andExpect(jsonPath("$._links.actualizar.href").value("http://localhost/api/mascotas/10"))
+                .andExpect(jsonPath("$._links.eliminar.href").value("http://localhost/api/mascotas/10"))
+                .andExpect(jsonPath("$._links.adopcion").doesNotExist());
+    }
+
+    @Test
+    void mascotaDisponibleComoUserNoOfreceAccionesDeAdmin() throws Exception {
+        when(mascotaService.obtener(10L)).thenReturn(firulais(true));
+        when(mascotaService.adopcionDe(10L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/mascotas/10").with(comoUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._links.self").exists())
+                .andExpect(jsonPath("$._links.adoptar").exists())
+                .andExpect(jsonPath("$._links.actualizar").doesNotExist())
+                .andExpect(jsonPath("$._links.eliminar").doesNotExist());
+    }
+
+    @Test
+    void mascotaAdoptadaEnlazaSuAdopcionYNoOfreceAdoptarNiEliminar() throws Exception {
+        when(mascotaService.obtener(10L)).thenReturn(firulais(false));
+        when(mascotaService.adopcionDe(10L)).thenReturn(Optional.of(3L));
+
+        mockMvc.perform(get("/api/mascotas/10").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._links.adopcion.href").value("http://localhost/api/adopciones/3"))
+                .andExpect(jsonPath("$._links.actualizar").exists())
+                .andExpect(jsonPath("$._links.adoptar").doesNotExist())
+                .andExpect(jsonPath("$._links.eliminar").doesNotExist());
+    }
+
+    @Test
+    void mascotaNoDisponibleSinAdopcionNoOfreceAdoptarPeroSiEliminar() throws Exception {
+        when(mascotaService.obtener(10L)).thenReturn(firulais(false));
+        when(mascotaService.adopcionDe(10L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/mascotas/10").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._links.adoptar").doesNotExist())
+                .andExpect(jsonPath("$._links.adopcion").doesNotExist())
+                .andExpect(jsonPath("$._links.eliminar").exists());
+    }
+
+    @Test
+    void listaDeMascotasUsaEmbeddedYEnlacesPorElemento() throws Exception {
+        when(mascotaService.listarDisponibles()).thenReturn(List.of(firulais(true)));
+
+        mockMvc.perform(get("/api/mascotas").with(comoUser()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaTypes.HAL_JSON))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/mascotas"))
+                .andExpect(jsonPath("$._embedded.mascotas[0]._links.self.href").value("http://localhost/api/mascotas/10"))
+                .andExpect(jsonPath("$._embedded.mascotas[0]._links.adoptar").exists())
+                .andExpect(jsonPath("$._embedded.mascotas[0]._links.eliminar").doesNotExist());
+        verify(mascotaService, never()).adopcionDe(any());
+    }
+
+    @Test
+    void listaVaciaNoIncluyeEmbeddedYConservaElEnlaceSelf() throws Exception {
+        when(mascotaService.listarDisponibles()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/mascotas").with(comoUser()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaTypes.HAL_JSON))
+                .andExpect(jsonPath("$._embedded").doesNotExist())
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/mascotas"));
+    }
+
+    @Test
+    void losErroresSiguenSiendoJsonAunqueSePidaHal() throws Exception {
+        when(mascotaService.obtener(99L)).thenThrow(new RecursoNoEncontradoException("No existe la mascota con id 99"));
+
+        mockMvc.perform(get("/api/mascotas/99").with(comoUser()).accept(MediaTypes.HAL_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$._links").doesNotExist());
     }
 }

@@ -2,6 +2,7 @@ package com.codigofacilito.adopcion.controller;
 
 import com.codigofacilito.adopcion.config.SecurityConfig;
 import com.codigofacilito.adopcion.config.SecurityErrorHandler;
+import com.codigofacilito.adopcion.controller.hateoas.UsuarioModelAssembler;
 import com.codigofacilito.adopcion.dto.UsuarioRequest;
 import com.codigofacilito.adopcion.dto.UsuarioResponse;
 import com.codigofacilito.adopcion.exception.ConflictoException;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.hateoas.MediaTypes;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -26,6 +28,7 @@ import static org.hamcrest.Matchers.endsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -33,12 +36,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(UsuarioController.class)
-@Import({SecurityConfig.class, SecurityErrorHandler.class})
+@Import({SecurityConfig.class, SecurityErrorHandler.class, UsuarioModelAssembler.class})
 @ActiveProfiles("test")
 class UsuarioControllerTest {
 
@@ -112,7 +116,7 @@ class UsuarioControllerTest {
 
         mockMvc.perform(get("/api/usuarios").with(comoUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(7));
+                .andExpect(jsonPath("$._embedded.usuarios[0].id").value(7));
     }
 
     @Test
@@ -222,5 +226,113 @@ class UsuarioControllerTest {
 
         mockMvc.perform(delete("/api/usuarios/7").with(comoAdmin()))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void usuarioSinAdopcionesComoAdminOfreceEliminar() throws Exception {
+        when(usuarioService.obtener(7L)).thenReturn(ana());
+        when(usuarioService.tieneAdopciones(7L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/usuarios/7").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaTypes.HAL_JSON))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/usuarios/7"))
+                .andExpect(jsonPath("$._links.usuarios.href").value("http://localhost/api/usuarios"))
+                .andExpect(jsonPath("$._links.actualizar.href").value("http://localhost/api/usuarios/7"))
+                .andExpect(jsonPath("$._links.eliminar.href").value("http://localhost/api/usuarios/7"));
+    }
+
+    @Test
+    void usuarioConAdopcionesNoOfreceEliminarNiAlAdmin() throws Exception {
+        when(usuarioService.obtener(7L)).thenReturn(ana());
+        when(usuarioService.tieneAdopciones(7L)).thenReturn(true);
+
+        mockMvc.perform(get("/api/usuarios/7").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._links.actualizar").exists())
+                .andExpect(jsonPath("$._links.eliminar").doesNotExist());
+    }
+
+    @Test
+    void comoUserSeOfreceActualizarPeroNoEliminar() throws Exception {
+        when(usuarioService.obtener(7L)).thenReturn(ana());
+        when(usuarioService.tieneAdopciones(7L)).thenReturn(false);
+
+        mockMvc.perform(get("/api/usuarios/7").with(comoUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._links.actualizar").exists())
+                .andExpect(jsonPath("$._links.eliminar").doesNotExist());
+    }
+
+    @Test
+    void laListaDeUsuariosNoOfreceEliminarPorElemento() throws Exception {
+        when(usuarioService.listar()).thenReturn(List.of(ana()));
+
+        mockMvc.perform(get("/api/usuarios").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/usuarios"))
+                .andExpect(jsonPath("$._embedded.usuarios[0]._links.self").exists())
+                .andExpect(jsonPath("$._embedded.usuarios[0]._links.eliminar").doesNotExist());
+        verify(usuarioService, never()).tieneAdopciones(any());
+    }
+
+    @Test
+    void listaVaciaDeUsuariosNoIncluyeEmbedded() throws Exception {
+        when(usuarioService.listar()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/usuarios").with(comoUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$._embedded").doesNotExist())
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/usuarios"));
+    }
+
+    @Test
+    void registrarEliminaEspaciosInicialesYFinalesDelCorreoAntesDeValidar() throws Exception {
+        when(usuarioService.registrar(any(UsuarioRequest.class))).thenReturn(ana());
+
+        mockMvc.perform(post("/api/usuarios").with(comoUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre": "Ana", "correoElectronico": "  ana@mail.com\\t ","telefono": "1155551234"}
+                                """))
+                .andExpect(status().isCreated());
+        verify(usuarioService).registrar(new UsuarioRequest("Ana", "ana@mail.com", "1155551234"));
+    }
+
+    @Test
+    void actualizarEliminaEspaciosInicialesYFinalesDelCorreoAntesDeValidar() throws Exception {
+        when(usuarioService.actualizar(eq(7L), any(UsuarioRequest.class))).thenReturn(ana());
+
+        mockMvc.perform(put("/api/usuarios/7").with(comoUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre": "Ana", "correoElectronico": " Ana@Mail.com ", "telefono": "1155551234"}
+                                """))
+                .andExpect(status().isOk());
+        verify(usuarioService).actualizar(7L, new UsuarioRequest("Ana", "Ana@Mail.com", "1155551234"));
+    }
+
+    @Test
+    void unCorreoConEspaciosInternosSeRechaza() throws Exception {
+        mockMvc.perform(post("/api/usuarios").with(comoUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre": "Ana", "correoElectronico": " ana perez@mail.com ", "telefono": "1155551234"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0].field").value("correoElectronico"));
+        verifyNoInteractions(usuarioService);
+    }
+
+    @Test
+    void unCorreoFormadoSoloPorEspaciosEsObligatorio() throws Exception {
+        mockMvc.perform(put("/api/usuarios/7").with(comoUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre": "Ana", "correoElectronico": "   ", "telefono": "1155551234"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0].message").value("El correo electrónico es obligatorio"));
+        verifyNoInteractions(usuarioService);
     }
 }

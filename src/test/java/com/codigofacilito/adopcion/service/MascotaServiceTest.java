@@ -162,6 +162,15 @@ class MascotaServiceTest {
     }
 
     @Test
+    void adopcionDeDevuelveElIdDeLaAdopcionSiExiste() {
+        when(adopcionRepository.findIdByMascotaId(1L)).thenReturn(Optional.of(5L));
+        when(adopcionRepository.findIdByMascotaId(2L)).thenReturn(Optional.empty());
+
+        assertThat(service.adopcionDe(1L)).contains(5L);
+        assertThat(service.adopcionDe(2L)).isEmpty();
+    }
+
+    @Test
     void eliminarInexistenteLanzaNoEncontrado() {
         when(mascotaRepository.findByIdForUpdate(5L)).thenReturn(Optional.empty());
 

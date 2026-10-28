@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional(readOnly = true)
@@ -52,6 +53,10 @@ public class MascotaService {
         return mascotaRepository.findWithTipoById(id)
                 .map(mascotaMapper::toResponse)
                 .orElseThrow(() -> mascotaNoEncontrada(id));
+    }
+
+    public Optional<Long> adopcionDe(Long mascotaId) {
+        return adopcionRepository.findIdByMascotaId(mascotaId);
     }
 
     @Transactional

@@ -132,6 +132,24 @@ class UsuarioServiceTest {
     }
 
     @Test
+    void tieneAdopcionesConsultaLasAdopcionesDelUsuario() {
+        when(adopcionRepository.existsByUsuarioId(1L)).thenReturn(true);
+        when(adopcionRepository.existsByUsuarioId(2L)).thenReturn(false);
+
+        assertThat(service.tieneAdopciones(1L)).isTrue();
+        assertThat(service.tieneAdopciones(2L)).isFalse();
+    }
+
+    @Test
+    void registrarConCorreoConEspaciosDetectaElDuplicadoNormalizado() {
+        when(usuarioRepository.existsByCorreoElectronico("ana@mail.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.registrar(new UsuarioRequest("Ana", "  ANA@mail.com ", "1155551234")))
+                .isInstanceOf(ConflictoException.class);
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
     void eliminarInexistenteLanzaNoEncontrado() {
         when(usuarioRepository.findById(9L)).thenReturn(Optional.empty());
 

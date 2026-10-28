@@ -43,7 +43,15 @@ public class OpenApiConfig {
                                 **Roles:** `USER` consulta, registra y actualiza usuarios y registra adopciones. \
                                 `ADMIN` además crea, actualiza y elimina mascotas y elimina usuarios.
 
-                                Todos los errores usan el esquema `ErrorResponse`."""))
+                                **Formato HAL:** las respuestas exitosas son `application/hal+json` e incluyen \
+                                `_links`. Las listas van en `_embedded.mascotas` o `_embedded.usuarios`; una lista \
+                                vacía solo trae `_links`. Relaciones: `self`, `mascotas-disponibles`, `usuarios`, \
+                                `mascota`, `usuario`, `adopcion` (GET), `adoptar` (POST /api/adopciones), \
+                                `actualizar` (PUT) y `eliminar` (DELETE). Solo se incluyen las acciones válidas \
+                                para el estado del recurso y el rol de la cuenta; aun así, el servidor vuelve a \
+                                verificar permisos (403) y reglas de negocio (409) en cada solicitud.
+
+                                Todos los errores usan el esquema `ErrorResponse` (`application/json`)."""))
                 .components(new Components().addSecuritySchemes(BASIC_AUTH, new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP)
                         .scheme("basic")

@@ -37,7 +37,7 @@ class AdopcionIT extends IntegracionBase {
 
         mockMvc.perform(get("/api/mascotas").with(comoUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].id").value(contains(libreId.intValue())));
+                .andExpect(jsonPath("$._embedded.mascotas[*].id").value(contains(libreId.intValue())));
     }
 
     @Test

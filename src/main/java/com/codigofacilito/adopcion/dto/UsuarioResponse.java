@@ -1,8 +1,10 @@
 package com.codigofacilito.adopcion.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.springframework.hateoas.server.core.Relation;
 
 @Schema(description = "Usuario adoptante registrado")
+@Relation(itemRelation = "usuario", collectionRelation = "usuarios")
 public record UsuarioResponse(
         @Schema(example = "1") Long id,
         @Schema(example = "Ana Pérez") String nombre,

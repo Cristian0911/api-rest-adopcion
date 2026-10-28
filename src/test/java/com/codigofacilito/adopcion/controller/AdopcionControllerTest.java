@@ -2,6 +2,7 @@ package com.codigofacilito.adopcion.controller;
 
 import com.codigofacilito.adopcion.config.SecurityConfig;
 import com.codigofacilito.adopcion.config.SecurityErrorHandler;
+import com.codigofacilito.adopcion.controller.hateoas.AdopcionModelAssembler;
 import com.codigofacilito.adopcion.dto.AdopcionRequest;
 import com.codigofacilito.adopcion.dto.AdopcionResponse;
 import com.codigofacilito.adopcion.dto.MascotaResponse;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.hateoas.MediaTypes;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -32,12 +34,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AdopcionController.class)
-@Import({SecurityConfig.class, SecurityErrorHandler.class})
+@Import({SecurityConfig.class, SecurityErrorHandler.class, AdopcionModelAssembler.class})
 @ActiveProfiles("test")
 class AdopcionControllerTest {
 
@@ -159,5 +162,29 @@ class AdopcionControllerTest {
     @Test
     void obtenerSinCredencialesDevuelve401() throws Exception {
         mockMvc.perform(get("/api/adopciones/3")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adopcionEnlazaASiMismaALaMascotaYAlUsuarioSinAccionesInexistentes() throws Exception {
+        when(adopcionService.obtener(3L)).thenReturn(adopcion());
+
+        mockMvc.perform(get("/api/adopciones/3").with(comoAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaTypes.HAL_JSON))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/adopciones/3"))
+                .andExpect(jsonPath("$._links.mascota.href").value("http://localhost/api/mascotas/10"))
+                .andExpect(jsonPath("$._links.usuario.href").value("http://localhost/api/usuarios/7"))
+                .andExpect(jsonPath("$._links.length()").value(3));
+    }
+
+    @Test
+    void adoptarDevuelveHalConEnlaceSelfIgualALocation() throws Exception {
+        when(adopcionService.adoptar(any(AdopcionRequest.class))).thenReturn(adopcion());
+
+        mockMvc.perform(post("/api/adopciones").with(comoUser())
+                        .contentType(MediaType.APPLICATION_JSON).content(ADOPCION_VALIDA))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", "http://localhost/api/adopciones/3"))
+                .andExpect(jsonPath("$._links.self.href").value("http://localhost/api/adopciones/3"));
     }
 }

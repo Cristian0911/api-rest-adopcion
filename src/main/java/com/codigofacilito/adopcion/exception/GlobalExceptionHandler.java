@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -40,7 +41,7 @@ public class GlobalExceptionHandler {
         List<FieldErrorDetail> detalles = ex.getBindingResult().getFieldErrors().stream()
                 .map(error -> new FieldErrorDetail(error.getField(), error.getDefaultMessage()))
                 .toList();
-        return ResponseEntity.badRequest().body(ErrorResponse.of(
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(ErrorResponse.of(
                 HttpStatus.BAD_REQUEST, "La solicitud contiene datos inválidos", request.getRequestURI(), detalles));
     }
 
@@ -86,7 +87,12 @@ public class GlobalExceptionHandler {
         return respuesta(HttpStatus.INTERNAL_SERVER_ERROR, "Ocurrió un error interno; intente más tarde", request);
     }
 
+    /**
+     * Los errores siempre son application/json, aunque el cliente pida application/hal+json:
+     * no son recursos HAL y no llevan enlaces.
+     */
     private ResponseEntity<ErrorResponse> respuesta(HttpStatus status, String mensaje, HttpServletRequest request) {
-        return ResponseEntity.status(status).body(ErrorResponse.of(status, mensaje, request.getRequestURI()));
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON)
+                .body(ErrorResponse.of(status, mensaje, request.getRequestURI()));
     }
 }

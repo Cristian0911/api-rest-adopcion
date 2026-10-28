@@ -1,5 +1,6 @@
 package com.codigofacilito.adopcion.controller;
 
+import com.codigofacilito.adopcion.controller.hateoas.AdopcionModelAssembler;
 import com.codigofacilito.adopcion.dto.AdopcionRequest;
 import com.codigofacilito.adopcion.dto.AdopcionResponse;
 import com.codigofacilito.adopcion.service.AdopcionService;
@@ -8,6 +9,8 @@ import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.IanaLinkRelations;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,9 +18,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
-import java.net.URI;
 
 @RestController
 @RequestMapping("/api/adopciones")
@@ -25,9 +25,11 @@ import java.net.URI;
 public class AdopcionController {
 
     private final AdopcionService adopcionService;
+    private final AdopcionModelAssembler assembler;
 
-    public AdopcionController(AdopcionService adopcionService) {
+    public AdopcionController(AdopcionService adopcionService, AdopcionModelAssembler assembler) {
         this.adopcionService = adopcionService;
+        this.assembler = assembler;
     }
 
     @PostMapping
@@ -39,11 +41,9 @@ public class AdopcionController {
     @ApiResponse(responseCode = "400", description = "Datos inválidos")
     @ApiResponse(responseCode = "404", description = "No existe la mascota o el usuario")
     @ApiResponse(responseCode = "409", description = "La mascota ya fue adoptada o no está disponible")
-    public ResponseEntity<AdopcionResponse> adoptar(@Valid @RequestBody AdopcionRequest request) {
-        AdopcionResponse adopcion = adopcionService.adoptar(request);
-        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
-                .path("/{id}").buildAndExpand(adopcion.id()).toUri();
-        return ResponseEntity.created(location).body(adopcion);
+    public ResponseEntity<EntityModel<AdopcionResponse>> adoptar(@Valid @RequestBody AdopcionRequest request) {
+        EntityModel<AdopcionResponse> adopcion = assembler.toModel(adopcionService.adoptar(request));
+        return ResponseEntity.created(adopcion.getRequiredLink(IanaLinkRelations.SELF).toUri()).body(adopcion);
     }
 
     @GetMapping("/{id}")
@@ -51,7 +51,7 @@ public class AdopcionController {
     @ApiResponse(responseCode = "200", description = "Adopción encontrada")
     @ApiResponse(responseCode = "400", description = "El id no es numérico")
     @ApiResponse(responseCode = "404", description = "No existe la adopción")
-    public AdopcionResponse obtener(@PathVariable Long id) {
-        return adopcionService.obtener(id);
+    public EntityModel<AdopcionResponse> obtener(@PathVariable Long id) {
+        return assembler.toModel(adopcionService.obtener(id));
     }
 }

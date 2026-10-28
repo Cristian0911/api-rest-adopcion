@@ -33,7 +33,7 @@ class AdopcionPostgresIT extends PostgresIntegracionBase {
         assertThat(disponibleEnBd(adoptadaId)).isFalse();
         mockMvc.perform(get("/api/mascotas").with(comoUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[*].id").value(contains(libreId.intValue())));
+                .andExpect(jsonPath("$._embedded.mascotas[*].id").value(contains(libreId.intValue())));
 
         mockMvc.perform(post("/api/adopciones").with(comoUser())
                         .contentType(MediaType.APPLICATION_JSON).content(adopcionJson(adoptadaId, crearUsuario())))

@@ -49,6 +49,10 @@ public class UsuarioService {
         return usuarioMapper.toResponse(buscar(id));
     }
 
+    public boolean tieneAdopciones(Long id) {
+        return adopcionRepository.existsByUsuarioId(id);
+    }
+
     @Transactional
     public UsuarioResponse actualizar(Long id, UsuarioRequest request) {
         Usuario usuario = buscar(id);
@@ -63,7 +67,7 @@ public class UsuarioService {
     @Transactional
     public void eliminar(Long id) {
         Usuario usuario = buscar(id);
-        if (adopcionRepository.existsByUsuarioId(id)) {
+        if (tieneAdopciones(id)) {
             throw new ConflictoException("El usuario con id " + id + " tiene adopciones registradas y no puede eliminarse");
         }
         usuarioRepository.delete(usuario);

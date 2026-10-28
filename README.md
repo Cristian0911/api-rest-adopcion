@@ -10,6 +10,7 @@ Proyecto final del Bootcamp de Backend con Java y Spring de Código Facilito.
 - Aplicar las reglas de adopción de forma consistente, incluso ante solicitudes concurrentes.
 - Proteger la API con HTTP Basic y dos roles (`USER` y `ADMIN`).
 - Responder con códigos HTTP correctos y un formato de error único.
+- Exponer hipervínculos HAL (HATEOAS) que reflejan las acciones permitidas por el estado del recurso y el rol.
 - Documentar la API con OpenAPI/Swagger UI y monitorearla con Actuator.
 - Verificar el comportamiento con pruebas unitarias, de controller y de integración.
 
@@ -27,6 +28,7 @@ Proyecto final del Bootcamp de Backend con Java y Spring de Código Facilito.
 | H2 Database (perfiles `dev` y `test`) | 2.4.240 |
 | Driver JDBC de PostgreSQL (perfil `postgres`) | 42.7.14 |
 | Flyway (migraciones del perfil `postgres`) | 12.4.0 |
+| Spring HATEOAS (respuestas HAL) | 3.1.3 |
 | springdoc-openapi (Swagger UI 5.34.0) | 3.2.0 |
 | Jackson | 3.1.7 |
 | Tomcat embebido | 11.0.27 |
@@ -50,6 +52,7 @@ Proyecto final del Bootcamp de Backend con Java y Spring de Código Facilito.
 com.codigofacilito.adopcion
 ├── config       Seguridad, OpenAPI, Clock y propiedades de las cuentas de acceso
 ├── controller   Solo HTTP: valida la entrada, delega en el servicio y arma la respuesta
+│   └── hateoas  Ensambladores de enlaces HAL según el estado del recurso y el rol de la cuenta
 ├── service      Reglas de negocio y transacciones
 ├── repository   Interfaces Spring Data JPA
 ├── entity       Entidades JPA
@@ -113,7 +116,7 @@ erDiagram
 | Adopciones concurrentes | Bloqueo pesimista (`SELECT ... FOR UPDATE`) + UNIQUE en BD | 409 |
 | Un PUT no puede reactivar una mascota adoptada | Verificación en el servicio con la mascota bloqueada | 409 |
 | No eliminar mascotas o usuarios con adopciones | Verificación en el servicio + clave foránea | 409 |
-| Correos únicos sin distinguir mayúsculas | Normalización + verificación + UNIQUE en BD | 409 |
+| Correos únicos sin distinguir mayúsculas | Espacios iniciales y finales eliminados antes de validar; minúsculas; verificación + UNIQUE en BD | 409 |
 
 ## Ejecución
 
@@ -316,9 +319,46 @@ Todos los endpoints `/api/**` requieren HTTP Basic. `401` = credenciales ausente
 
 Los endpoints `GET /api/mascotas/{id}` y `GET /api/adopciones/{id}` existen para que el header `Location` de los `201` apunte a un recurso consultable. Cualquier error inesperado responde `500` sin detalles internos.
 
+### Formato HAL (HATEOAS)
+
+Las respuestas exitosas usan **HAL** con Spring HATEOAS:
+
+- **Media type:** `application/hal+json` (es lo que se recibe con curl, Swagger UI o cualquier cliente que acepte `*/*`). Si el cliente envía `Accept: application/json`, el cuerpo es el mismo y solo cambia el `Content-Type`.
+- **Recursos:** los campos del DTO más un objeto `_links`.
+- **Listas:** objeto con `_embedded.mascotas` o `_embedded.usuarios` y `_links.self`. **Ya no son arrays JSON.**
+- **Listas vacías:** HAL omite `_embedded`, así que la respuesta es solo `{"_links":{"self":{...}}}`. Un cliente debe tratar la ausencia de `_embedded` como lista vacía.
+- **Errores:** no cambian. Siguen siendo `application/json` con el formato `ErrorResponse` y sin `_links`, aunque el cliente pida `application/hal+json`.
+- El `Location` de los `201` coincide con `_links.self.href`.
+
+**Relaciones** (los enlaces HAL no indican el método HTTP; se documenta aquí):
+
+| Recurso | Relación | Método y destino | Aparece cuando |
+|---|---|---|---|
+| Mascota | `self` | GET `/api/mascotas/{id}` | siempre |
+| | `mascotas-disponibles` | GET `/api/mascotas` | siempre |
+| | `adoptar` | POST `/api/adopciones` (cuerpo `{"mascotaId", "usuarioId"}`) | la mascota está disponible y no tiene adopción |
+| | `adopcion` | GET `/api/adopciones/{id}` | la mascota tiene adopción (no se calcula en las listas: allí todas están disponibles) |
+| | `actualizar` | PUT `/api/mascotas/{id}` | la cuenta es ADMIN |
+| | `eliminar` | DELETE `/api/mascotas/{id}` | la cuenta es ADMIN y la mascota no tiene adopción |
+| Usuario | `self` | GET `/api/usuarios/{id}` | siempre |
+| | `usuarios` | GET `/api/usuarios` | siempre |
+| | `actualizar` | PUT `/api/usuarios/{id}` | siempre (USER y ADMIN pueden actualizar) |
+| | `eliminar` | DELETE `/api/usuarios/{id}` | la cuenta es ADMIN y el usuario no tiene adopciones; **solo en el detalle**, no en la lista (para no consultar adopciones por cada usuario) |
+| Adopción | `self` | GET `/api/adopciones/{id}` | siempre |
+| | `mascota` | GET `/api/mascotas/{id}` | siempre |
+| | `usuario` | GET `/api/usuarios/{id}` | siempre |
+| Listas | `self` | GET de la propia lista | siempre |
+
+No hay enlaces a operaciones que no existen (listar o eliminar adopciones, adopciones de un usuario, tipos de mascota).
+
+> **Los enlaces no reemplazan la autorización ni las reglas de negocio.** Son una guía para el cliente
+> según el estado y el rol **en el momento de la respuesta**. El servidor vuelve a verificar todo en
+> cada solicitud: una cuenta USER que invoque `DELETE` sin tener el enlace recibe `403`, y un enlace
+> `adoptar` obtenido antes de que otra solicitud adoptara la mascota termina en `409`.
+
 ### Formato de error
 
-Todas las respuestas de error, incluidas `401` y `403`, usan el mismo formato:
+Todas las respuestas de error, incluidas `401` y `403`, usan el mismo formato (`application/json`):
 
 ```json
 {
@@ -344,7 +384,7 @@ Los cuerpos de las solicitudes están en la carpeta [`ejemplos/`](ejemplos) y se
 - **Git Bash:** usar `curl`.
 - **PowerShell:** usar **`curl.exe`**. En Windows PowerShell 5.1, `curl` es un alias de `Invoke-WebRequest` y no acepta estas opciones. Escribir `"@ejemplos/..."` entre comillas, porque `@` tiene significado especial en PowerShell.
 
-Todos los comandos se ejecutan desde la carpeta raíz del proyecto, con la aplicación iniciada en el perfil `dev` y recién arrancada.
+Todos los comandos se ejecutan desde la carpeta raíz del proyecto, con la aplicación iniciada en el perfil `dev` y recién arrancada. Las respuestas se muestran con formato para facilitar la lectura; la API las envía en una sola línea.
 
 ### Demostración completa
 
@@ -363,10 +403,22 @@ curl.exe -i -u user:user123 -H "Content-Type: application/json" --data-binary "@
 ```http
 HTTP/1.1 201
 Location: http://localhost:8080/api/usuarios/1
-Content-Type: application/json
+Content-Type: application/hal+json
 
-{"id":1,"nombre":"Ana Pérez","correoElectronico":"ana.perez@mail.com","telefono":"+54 11 5555-1234"}
+{
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/usuarios/1" },
+    "usuarios": { "href": "http://localhost:8080/api/usuarios" },
+    "actualizar": { "href": "http://localhost:8080/api/usuarios/1" }
+  },
+  "id": 1,
+  "nombre": "Ana Pérez",
+  "correoElectronico": "ana.perez@mail.com",
+  "telefono": "+54 11 5555-1234"
+}
 ```
+
+La respuesta usa la cuenta `user`, por eso no incluye `eliminar` (solo ADMIN puede eliminar usuarios).
 
 **2. Registrar una mascota** (requiere ADMIN; `ejemplos/mascota.json`)
 
@@ -383,12 +435,25 @@ curl.exe -i -u admin:admin123 -H "Content-Type: application/json" --data-binary 
 ```http
 HTTP/1.1 201
 Location: http://localhost:8080/api/mascotas/1
-Content-Type: application/json
+Content-Type: application/hal+json
 
-{"id":1,"nombre":"Firulais","tipoMascota":{"id":1,"nombre":"Perro"},"edad":3,"disponible":true}
+{
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/mascotas/1" },
+    "mascotas-disponibles": { "href": "http://localhost:8080/api/mascotas" },
+    "adoptar": { "href": "http://localhost:8080/api/adopciones" },
+    "actualizar": { "href": "http://localhost:8080/api/mascotas/1" },
+    "eliminar": { "href": "http://localhost:8080/api/mascotas/1" }
+  },
+  "id": 1,
+  "nombre": "Firulais",
+  "tipoMascota": { "id": 1, "nombre": "Perro" },
+  "edad": 3,
+  "disponible": true
+}
 ```
 
-**3. Consultar las mascotas disponibles**
+**3. Consultar las mascotas disponibles** (como `user`: sin `actualizar` ni `eliminar`)
 
 ```bash
 curl -u user:user123 http://localhost:8080/api/mascotas          # Git Bash
@@ -396,10 +461,30 @@ curl.exe -u user:user123 http://localhost:8080/api/mascotas      # PowerShell
 ```
 
 ```json
-[{"id":1,"nombre":"Firulais","tipoMascota":{"id":1,"nombre":"Perro"},"edad":3,"disponible":true}]
+{
+  "_embedded": {
+    "mascotas": [
+      {
+        "_links": {
+          "self": { "href": "http://localhost:8080/api/mascotas/1" },
+          "mascotas-disponibles": { "href": "http://localhost:8080/api/mascotas" },
+          "adoptar": { "href": "http://localhost:8080/api/adopciones" }
+        },
+        "id": 1,
+        "nombre": "Firulais",
+        "tipoMascota": { "id": 1, "nombre": "Perro" },
+        "edad": 3,
+        "disponible": true
+      }
+    ]
+  },
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/mascotas" }
+  }
+}
 ```
 
-**4. Adoptar la mascota** (`ejemplos/adopcion.json`: `{"mascotaId": 1, "usuarioId": 1}`)
+**4. Adoptar la mascota** con el enlace `adoptar` (`ejemplos/adopcion.json`: `{"mascotaId": 1, "usuarioId": 1}`)
 
 ```bash
 # Git Bash
@@ -414,12 +499,22 @@ curl.exe -i -u user:user123 -H "Content-Type: application/json" --data-binary "@
 ```http
 HTTP/1.1 201
 Location: http://localhost:8080/api/adopciones/1
-Content-Type: application/json
+Content-Type: application/hal+json
 
-{"id":1,"fechaAdopcion":"2026-10-27","mascota":{"id":1,"nombre":"Firulais","tipoMascota":{"id":1,"nombre":"Perro"},"edad":3,"disponible":false},"usuario":{"id":1,"nombre":"Ana Pérez","correoElectronico":"ana.perez@mail.com","telefono":"+54 11 5555-1234"}}
+{
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/adopciones/1" },
+    "mascota": { "href": "http://localhost:8080/api/mascotas/1" },
+    "usuario": { "href": "http://localhost:8080/api/usuarios/1" }
+  },
+  "id": 1,
+  "fechaAdopcion": "2026-10-27",
+  "mascota": { "id": 1, "nombre": "Firulais", "tipoMascota": { "id": 1, "nombre": "Perro" }, "edad": 3, "disponible": false },
+  "usuario": { "id": 1, "nombre": "Ana Pérez", "correoElectronico": "ana.perez@mail.com", "telefono": "+54 11 5555-1234" }
+}
 ```
 
-**5. Comprobar que ya no aparece entre las disponibles**
+**5. Comprobar que ya no aparece entre las disponibles** (lista vacía: sin `_embedded`)
 
 ```bash
 curl -u user:user123 http://localhost:8080/api/mascotas          # Git Bash
@@ -427,16 +522,41 @@ curl.exe -u user:user123 http://localhost:8080/api/mascotas      # PowerShell
 ```
 
 ```json
-[]
+{
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/mascotas" }
+  }
+}
 ```
 
 **6. Intentar adoptarla otra vez** (mismo comando del paso 4)
 
 ```http
 HTTP/1.1 409
+Content-Type: application/json
 
-{"timestamp":"2026-10-27T16:27:50.974875500Z","status":409,"error":"Conflict","message":"La mascota con id 1 ya fue adoptada o no está disponible","path":"/api/adopciones","details":[]}
+{"timestamp":"2026-10-27T17:46:09.267772249Z","status":409,"error":"Conflict","message":"La mascota con id 1 ya fue adoptada o no está disponible","path":"/api/adopciones","details":[]}
 ```
+
+**7. Consultar la mascota adoptada como ADMIN** (`curl -u admin:admin123 http://localhost:8080/api/mascotas/1`): ahora enlaza su adopción y ya no ofrece `adoptar` ni `eliminar`.
+
+```json
+{
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/mascotas/1" },
+    "mascotas-disponibles": { "href": "http://localhost:8080/api/mascotas" },
+    "adopcion": { "href": "http://localhost:8080/api/adopciones/1" },
+    "actualizar": { "href": "http://localhost:8080/api/mascotas/1" }
+  },
+  "id": 1,
+  "nombre": "Firulais",
+  "tipoMascota": { "id": 1, "nombre": "Perro" },
+  "edad": 3,
+  "disponible": false
+}
+```
+
+Del mismo modo, `curl -u admin:admin123 http://localhost:8080/api/usuarios/1` ya no incluye `eliminar`, porque el usuario tiene una adopción.
 
 ### Otros ejemplos
 
@@ -450,7 +570,7 @@ Los comandos usan la sintaxis de Git Bash. En PowerShell, reemplazar `curl` por 
 | Correo duplicado | repetir el paso 1 | `409` |
 | Reactivar una adoptada | `curl -i -u admin:admin123 -X PUT -H "Content-Type: application/json" --data-binary @ejemplos/mascota-reactivar.json http://localhost:8080/api/mascotas/1` | `409` |
 | Actualizar una mascota | `curl -i -u admin:admin123 -X PUT -H "Content-Type: application/json" --data-binary @ejemplos/mascota-actualizacion.json http://localhost:8080/api/mascotas/{id}` | `200` |
-| Listar usuarios | `curl -u user:user123 http://localhost:8080/api/usuarios` | `200` |
+| Listar usuarios | `curl -u user:user123 http://localhost:8080/api/usuarios` | `200` (`_embedded.usuarios`) |
 | Consultar un usuario | `curl -u user:user123 http://localhost:8080/api/usuarios/1` | `200` |
 | Actualizar un usuario | `curl -i -u user:user123 -X PUT -H "Content-Type: application/json" --data-binary @ejemplos/usuario-actualizacion.json http://localhost:8080/api/usuarios/1` | `200` |
 | Consultar una adopción | `curl -u user:user123 http://localhost:8080/api/adopciones/1` | `200` |
@@ -463,8 +583,20 @@ Los comandos usan la sintaxis de Git Bash. En PowerShell, reemplazar `curl` por 
 Respuesta de `PUT /api/usuarios/1` con `ejemplos/usuario-actualizacion.json`:
 
 ```json
-{"id":1,"nombre":"Ana María Pérez","correoElectronico":"ana.perez@mail.com","telefono":"+54 11 4444-0000"}
+{
+  "_links": {
+    "self": { "href": "http://localhost:8080/api/usuarios/1" },
+    "usuarios": { "href": "http://localhost:8080/api/usuarios" },
+    "actualizar": { "href": "http://localhost:8080/api/usuarios/1" }
+  },
+  "id": 1,
+  "nombre": "Ana María Pérez",
+  "correoElectronico": "ana.perez@mail.com",
+  "telefono": "+54 11 4444-0000"
+}
 ```
+
+**Correo electrónico:** al crear y actualizar se eliminan los espacios iniciales y finales **antes** de validar y de buscar duplicados (por ejemplo, `"  ana.perez@mail.com "` se acepta y se guarda sin espacios). Un correo con espacios internos (`"ana perez@mail.com"`) se rechaza con `400`. Como hasta ahora, se guarda en minúsculas y la unicidad no distingue mayúsculas.
 
 ## Swagger UI y OpenAPI
 
@@ -473,7 +605,7 @@ Respuesta de `PUT /api/usuarios/1` con `ejemplos/usuario-actualizacion.json`:
 | Swagger UI | <http://localhost:8080/swagger-ui.html> (redirige a `/swagger-ui/index.html`) | Público |
 | Documento OpenAPI (JSON) | <http://localhost:8080/v3/api-docs> | Público |
 
-La documentación es pública, pero **los endpoints de negocio siguen protegidos**: Swagger UI solo envía las credenciales que se cargan con **Authorize**. Cada operación indica en su descripción el rol requerido (`USER` o `ADMIN`) y documenta sus respuestas de error con el esquema `ErrorResponse`.
+La documentación es pública, pero **los endpoints de negocio siguen protegidos**: Swagger UI solo envía las credenciales que se cargan con **Authorize**. Cada operación indica en su descripción el rol requerido (`USER` o `ADMIN`) y documenta sus respuestas de error con el esquema `ErrorResponse` (`application/json`). Las respuestas exitosas se documentan como `application/hal+json`, con esquemas `EntityModel...` (campos más `_links`) y `CollectionModel...` (`_embedded` más `_links`); la descripción general del documento lista las relaciones.
 
 Para probar la API desde Swagger UI:
 
@@ -637,6 +769,8 @@ Las pruebas de integración cubren, entre otras cosas:
 - que una mascota no se adopta dos veces;
 - que un fallo dentro de la transacción revierte la adopción y la disponibilidad;
 - que dos solicitudes concurrentes producen exactamente un `201`, un `409` y una sola adopción en la base;
+- los enlaces HAL: que se pueden seguir, que cambian según el estado y el rol, cómo se representan las listas vacías, y que el servidor sigue respondiendo `403`/`409` aunque el cliente use una URL sin tener el enlace;
+- la normalización del correo (espacios iniciales y finales) al crear, actualizar y detectar duplicados;
 - la documentación OpenAPI, Swagger UI y Actuator.
 
 Las pruebas usan el perfil `test`, que tiene sus propias credenciales y una base H2 independiente.
