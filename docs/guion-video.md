@@ -2,7 +2,7 @@
 
 **Proyecto:** API-REST-AdopcionCodigoFacilito
 **Duración objetivo:** 7 minutos (máximo 8)
-**Presentadores:** [Integrante 1] · [Integrante 2] · [Integrante 3] (asignar los bloques según el equipo)
+**Presentador:** Cristian Gunther
 
 ## Preparación antes de grabar
 

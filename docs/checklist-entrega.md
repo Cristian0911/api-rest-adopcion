@@ -1,7 +1,8 @@
 # Checklist de entrega
 
 **Proyecto:** API-REST-AdopcionCodigoFacilito
-**Versión revisada:** commit `cafff03`
+**Versión revisada:** commit `6edba9a`
+**Repositorio:** https://github.com/Cristian0911/api-rest-adopcion
 **Fecha límite de entrega:** 5 de enero de 2027
 
 Leyenda: ✅ cumplido y verificado · 🟡 preparado o parcial · ⏳ pendiente (acción del equipo)
@@ -102,7 +103,7 @@ Leyenda: ✅ cumplido y verificado · 🟡 preparado o parcial · ⏳ pendiente 
 | Sin adopción parcial si falla la operación | ✅ | `AdopcionRollbackIT`, `AdopcionIT`, `AdopcionPostgresIT` |
 | `GET /api/mascotas` no devuelve adoptadas | ✅ | `AdopcionIT`, `AdopcionPostgresIT` |
 | Separación clara entre unitarias e integración | ✅ | Surefire (`*Test`) y Failsafe (`*IT`, `*PostgresIT` con `-Ppostgres`) |
-| **Resultado:** 183 pruebas con H2, 131 con el perfil PostgreSQL, 204 distintas, 0 fallos | ✅ | `mvnw clean verify` y `mvnw clean verify -Ppostgres` sobre `cafff03` |
+| **Resultado:** 183 pruebas con H2, 131 con el perfil PostgreSQL, 204 distintas, 0 fallos | ✅ | `mvnw clean verify` y `mvnw clean verify -Ppostgres` sobre `6edba9a` |
 
 ## 9. Documentación y monitoreo
 
@@ -130,8 +131,8 @@ Leyenda: ✅ cumplido y verificado · 🟡 preparado o parcial · ⏳ pendiente 
 | Entregable | Estado | Observación |
 |---|---|---|
 | Título y descripción del proyecto | ✅ | Informe, portada y sección 1 |
-| Repositorio público organizado y sin secretos | ⏳ | Revisión sin secretos realizada; falta crear el repositorio remoto y publicar (push) |
-| Documento para exportar a PDF | 🟡 | `docs/informe-proyecto.md` listo; falta completar integrantes, URL y fecha, y exportar |
+| Repositorio público organizado y sin secretos | ✅ | Publicado en https://github.com/Cristian0911/api-rest-adopcion; archivos e historial revisados sin secretos |
+| Documento para exportar a PDF | 🟡 | `docs/informe-proyecto.md` completo; falta exportar a PDF |
 | Guion del video (5 a 8 minutos) | 🟡 | `docs/guion-video.md` listo; falta ensayar y grabar |
 | Checklist de cumplimiento | ✅ | Este documento |
 | Plan de trabajo hasta el 5 de enero de 2027 | ✅ | Sección 13 |
@@ -140,20 +141,21 @@ Leyenda: ✅ cumplido y verificado · 🟡 preparado o parcial · ⏳ pendiente 
 
 | Pendiente | Responsable | Estado |
 |---|---|---|
-| Contrastar este checklist con el enunciado oficial y los criterios de evaluación | Equipo | ⏳ |
-| Confirmar si la institución exige declarar herramientas utilizadas | Equipo | ⏳ |
-| Ejecutar la aplicación y las pruebas desde IntelliJ IDEA | [Integrante] | ⏳ |
-| Uso manual de Swagger UI en navegador (*Authorize*, *Try it out*) | [Integrante] | ⏳ |
-| Restaurar las carpetas de Windows en el `PATH` del sistema (o usar Git Bash) | [Integrante] | ⏳ |
-| Opcional: probar la conexión con Supabase (pooler en modo *session*, SSL `verify-full`) | [Integrante] | ⏳ |
-| Opcional: repetir la comprobación Docker + PostgreSQL con la versión HAL actual | [Integrante] | ⏳ |
+| Contrastar este checklist con el enunciado oficial y los criterios de evaluación | Cristian Gunther | ⏳ |
+| Confirmar si la institución exige declarar herramientas utilizadas | Cristian Gunther | ⏳ |
+| Ejecutar la aplicación y las pruebas desde IntelliJ IDEA | Cristian Gunther | ⏳ |
+| Uso manual de Swagger UI en navegador (*Authorize*, *Try it out*) | Cristian Gunther | ⏳ |
+| Restaurar las carpetas de Windows en el `PATH` del sistema (o usar Git Bash) | Cristian Gunther | ⏳ |
+| Opcional: probar la conexión con Supabase (pooler en modo *session*, SSL `verify-full`) | Cristian Gunther | ⏳ |
+| Opcional: repetir la comprobación Docker + PostgreSQL con la versión HAL actual | Cristian Gunther | ⏳ |
 
 ## 13. Plan de trabajo hasta el 5 de enero de 2027
 
 | Período | Actividad |
 |---|---|
+| 28 de octubre de 2026 | ✅ Repositorio público creado y código publicado |
 | Hasta el 8 de noviembre de 2026 | Contrastar con el enunciado oficial; verificar en IntelliJ y Swagger UI; corregir lo que surja |
-| 9 al 22 de noviembre | Crear el repositorio público, publicar el código y revisar el README desde GitHub |
+| 9 al 22 de noviembre | Revisar el README y la documentación desde GitHub |
 | 23 de noviembre al 6 de diciembre | Completar y exportar el informe a PDF; revisión cruzada entre integrantes |
 | 7 al 20 de diciembre | Ensayar y grabar el video; revisar duración y audio |
 | 21 de diciembre al 2 de enero de 2027 | Revisión final del checklist, ejecución completa de las pruebas sobre la versión entregada |

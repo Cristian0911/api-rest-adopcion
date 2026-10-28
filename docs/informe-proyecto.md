@@ -5,10 +5,10 @@
 | | |
 |---|---|
 | Proyecto | API-REST-AdopcionCodigoFacilito |
-| Integrantes | [Nombre 1] · [Nombre 2] · [Nombre 3] |
-| Repositorio | [URL del repositorio público] |
-| Versión documentada | commit `cafff03` (rama `main`) |
-| Fecha | [Fecha de entrega] |
+| Integrante | Cristian Gunther |
+| Repositorio | https://github.com/Cristian0911/api-rest-adopcion |
+| Versión documentada | commit `6edba9a` (rama `main`) |
+| Fecha | 5 de enero de 2027 |
 
 ---
 
@@ -357,7 +357,7 @@ Las pruebas de integración con H2 usan servicios y repositorios reales; `Adopci
 
 ### 15.2 Resultados
 
-Ejecutados sobre el código del commit `cafff03`:
+Ejecutados sobre el código del commit `6edba9a`:
 
 | Comando | Surefire | Failsafe | Total | Fallos / errores / omitidas |
 |---|---|---|---|---|
@@ -374,7 +374,7 @@ Las 110 pruebas de Surefire son las mismas en ambos comandos; por eso el total d
 | HAL, enlaces por estado y rol, navegación siguiendo los enlaces, colecciones vacías | Pruebas de controller y de integración con H2 (`HateoasIT`); demostración manual con la imagen Docker y el perfil `dev` (H2) | Navegación HAL específica contra PostgreSQL. La suite de PostgreSQL comprueba el formato `_embedded` de la lista de mascotas, pero no recorre los enlaces. |
 | Reglas de negocio, restricciones, rollback y concurrencia en PostgreSQL | Suite `-Ppostgres` (PostgreSQL 17 en Testcontainers) | — |
 | Perfil `postgres` con variables de entorno | Ejecución del JAR contra un PostgreSQL local temporal: migraciones V1–V3, persistencia tras reiniciar y conexión separada para Flyway | — |
-| API contenerizada con PostgreSQL | Contenedor de la API contra un PostgreSQL temporal mediante `host.docker.internal`: migraciones aplicadas, flujo de adopción y datos conservados al recrear el contenedor. Realizado con la versión previa a HATEOAS (commit `a6aa759`). | Repetición con la versión HAL actual |
+| API contenerizada con PostgreSQL | Contenedor de la API contra un PostgreSQL temporal mediante `host.docker.internal`: migraciones aplicadas, flujo de adopción y datos conservados al recrear el contenedor. Realizado con la versión previa a HATEOAS (commit `66531de`). | Repetición con la versión HAL actual |
 | Supabase y SSL con certificado real | — | **No probado** |
 | Ejecución desde IntelliJ IDEA | — | Pendiente |
 | Uso manual de Swagger UI en un navegador (*Authorize*, *Try it out*) | Swagger UI y `/v3/api-docs` comprobados por HTTP y con pruebas automatizadas | Pendiente |
